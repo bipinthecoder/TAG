@@ -31,11 +31,32 @@ function parseCSV(text) {
   return result;
 }
 
-function matchesFilter(item, filter, groups) {
-  if (!filter) return true;
-  if (filter.type === 'flagged') return item.flagged;
-  if (filter.type === 'unlabelled') return groups.length > 0 && groups.some(g => !item.labels[g.id]);
-  if (filter.type === 'label') return item.labels[filter.groupId] === filter.label;
+const EMPTY_FILTERS = { flagged: false, unlabelled: false, labels: {} };
+
+function hasAnyFilter(f) {
+  return f.flagged || f.unlabelled || Object.values(f.labels).some(arr => arr.length > 0);
+}
+
+function isGroupExcluded(item, groupId, allGroups) {
+  for (const g of allGroups) {
+    if (g.id === groupId) continue;
+    const lbl = item.labels[g.id];
+    if (!lbl) continue;
+    if ((g.exclusions?.[lbl] ?? []).includes(groupId)) return true;
+  }
+  return false;
+}
+
+function isFullyLabelled(item, groups) {
+  return groups.length > 0 && groups.every(g => item.labels[g.id] || isGroupExcluded(item, g.id, groups));
+}
+
+function matchesFilters(item, f, groups) {
+  if (f.flagged && !item.flagged) return false;
+  if (f.unlabelled && !( groups.length > 0 && groups.some(g => !item.labels[g.id] && !isGroupExcluded(item, g.id, groups)))) return false;
+  for (const [gid, lbls] of Object.entries(f.labels)) {
+    if (lbls.length > 0 && !lbls.includes(item.labels[gid])) return false;
+  }
   return true;
 }
 
@@ -86,19 +107,27 @@ function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [zoomed, setZoomed] = useState(false);
 
-  const [activeFilter, setActiveFilter] = useState(null);
+  const [activeFilters, setActiveFilters] = useState(EMPTY_FILTERS);
 
   const filteredIndices = useMemo(
-    () => items.map((_, i) => i).filter(i => matchesFilter(items[i], activeFilter, groups)),
-    [items, activeFilter, groups]
+    () => items.map((_, i) => i).filter(i => matchesFilters(items[i], activeFilters, groups)),
+    [items, activeFilters, groups]
   );
 
-  const applyFilter = (filter) => {
-    setActiveFilter(filter);
-    if (filter) {
-      const first = items.findIndex(it => matchesFilter(it, filter, groups));
-      if (first !== -1 && first !== idx) setIdx(first);
-    }
+  const isFiltered = hasAnyFilter(activeFilters);
+
+  const clearFilters = () => setActiveFilters(EMPTY_FILTERS);
+
+  const togglePreset = (key) => {
+    setActiveFilters(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleLabelFilter = (groupId, label) => {
+    setActiveFilters(prev => {
+      const existing = prev.labels[groupId] ?? [];
+      const next = existing.includes(label) ? existing.filter(l => l !== label) : [...existing, label];
+      return { ...prev, labels: { ...prev.labels, [groupId]: next } };
+    });
   };
 
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
@@ -135,14 +164,12 @@ function App() {
     setItems(newItems);
     setGroups(newGroups);
     setIdx(0);
-    setActiveFilter(null);
+    setActiveFilters(EMPTY_FILTERS);
   };
 
   const item = items[idx];
 
-  const labelledCount = items.filter(it =>
-    groups.length > 0 && groups.every(g => it.labels[g.id])
-  ).length;
+  const labelledCount = items.filter(it => isFullyLabelled(it, groups)).length;
   const flaggedCount = items.filter(it => it.flagged).length;
 
   const promoteSuggested = (prevItems, targetIdx) => {
@@ -161,7 +188,7 @@ function App() {
 
   const goPrev = () => {
     if (autoConfirmSuggested) setItems(prev => promoteSuggested(prev, idx));
-    if (activeFilter) {
+    if (isFiltered) {
       if (filteredPos > 0) setIdx(filteredIndices[filteredPos - 1]);
     } else {
       setIdx(Math.max(0, idx - 1));
@@ -169,7 +196,7 @@ function App() {
   };
   const goNext = () => {
     if (autoConfirmSuggested) setItems(prev => promoteSuggested(prev, idx));
-    if (activeFilter) {
+    if (isFiltered) {
       if (filteredPos < filteredIndices.length - 1) setIdx(filteredIndices[filteredPos + 1]);
     } else {
       setIdx(Math.min(items.length - 1, idx + 1));
@@ -191,9 +218,9 @@ function App() {
 
     if (autoAdvance && groups.length > 0) {
       const updated = newItems[idx];
-      if (groups.every(g => updated.labels[g.id])) {
-        const indices = activeFilter
-          ? newItems.map((_, i) => i).filter(i => matchesFilter(newItems[i], activeFilter, groups))
+      if (isFullyLabelled(updated, groups)) {
+        const indices = isFiltered
+          ? newItems.map((_, i) => i).filter(i => matchesFilters(newItems[i], activeFilters, groups))
           : newItems.map((_, i) => i);
         const pos = indices.indexOf(idx);
         if (pos < indices.length - 1) setIdx(indices[pos + 1]);
@@ -224,6 +251,18 @@ function App() {
         ? { ...(it.suggestedLabels ?? {}), [groupId]: null }
         : (it.suggestedLabels ?? {}),
     })));
+  };
+
+  const handleSetExclusion = (groupId, label, targetGroupId, exclude) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g;
+      const excl = { ...(g.exclusions ?? {}) };
+      const current = excl[label] ?? [];
+      excl[label] = exclude
+        ? [...new Set([...current, targetGroupId])]
+        : current.filter(id => id !== targetGroupId);
+      return { ...g, exclusions: excl };
+    }));
   };
 
   const deleteGroup = (groupId) => {
@@ -292,6 +331,11 @@ function App() {
               <Typography variant="body1" sx={{ fontWeight: 700 }}>
                 Crop review
               </Typography>
+
+              {/* Readability */}
+              <Typography variant="body1" sx={{ color: "grey.500" }}> &nbsp; </Typography> 
+              <Typography variant="body1" sx={{ color: "grey.500" }}> &nbsp; </Typography>
+
               <Typography variant="body1" sx={{ color: "grey.500" }}>
                 {labelledCount}/{items.length} labelled
                 {flaggedCount > 0 && (
@@ -348,42 +392,52 @@ function App() {
 
           {/* Filter bar */}
           <Stack direction="row" flexWrap="wrap" gap={0.75} alignItems="center">
-            {[
-              { label: 'All', filter: null },
-              { label: 'Unlabelled', filter: { type: 'unlabelled' } },
-              { label: 'Flagged', filter: { type: 'flagged' }, color: '#E07A7A' },
-            ].map(({ label, filter, color }) => {
-              const active = filter === null ? !activeFilter : activeFilter?.type === filter?.type;
-              const ac = color ?? '#5BC8AF';
-              return (
-                <Chip key={label} label={label} size="small" onClick={() => applyFilter(filter)}
-                  sx={{
-                    height: 22, fontSize: 11, borderRadius: '999px',
-                    bgcolor: active ? ac : 'transparent',
-                    color: active ? '#000' : 'grey.500',
-                    border: '1px solid', borderColor: active ? ac : 'grey.800',
-                    '& .MuiChip-label': { px: 1 },
-                    '&:hover': { borderColor: ac, color: active ? '#000' : 'grey.300', bgcolor: active ? ac : 'transparent' },
-                  }}
-                />
-              );
-            })}
+            <Chip label="All" size="small" onClick={clearFilters}
+              sx={{
+                height: 22, fontSize: 11, borderRadius: '999px',
+                bgcolor: !isFiltered ? '#5BC8AF' : 'transparent',
+                color: !isFiltered ? '#000' : 'grey.500',
+                border: '1px solid', borderColor: !isFiltered ? '#5BC8AF' : 'grey.800',
+                '& .MuiChip-label': { px: 1 },
+                '&:hover': { borderColor: '#5BC8AF', color: !isFiltered ? '#000' : 'grey.300', bgcolor: !isFiltered ? '#5BC8AF' : 'transparent' },
+              }}
+            />
+            <Chip label="Unlabelled" size="small" onClick={() => togglePreset('unlabelled')}
+              sx={{
+                height: 22, fontSize: 11, borderRadius: '999px',
+                bgcolor: activeFilters.unlabelled ? '#5BC8AF' : 'transparent',
+                color: activeFilters.unlabelled ? '#000' : 'grey.500',
+                border: '1px solid', borderColor: activeFilters.unlabelled ? '#5BC8AF' : 'grey.800',
+                '& .MuiChip-label': { px: 1 },
+                '&:hover': { borderColor: '#5BC8AF', color: activeFilters.unlabelled ? '#000' : 'grey.300', bgcolor: activeFilters.unlabelled ? '#5BC8AF' : 'transparent' },
+              }}
+            />
+            <Chip label="Flagged" size="small" onClick={() => togglePreset('flagged')}
+              sx={{
+                height: 22, fontSize: 11, borderRadius: '999px',
+                bgcolor: activeFilters.flagged ? '#E07A7A' : 'transparent',
+                color: activeFilters.flagged ? '#000' : 'grey.500',
+                border: '1px solid', borderColor: activeFilters.flagged ? '#E07A7A' : 'grey.800',
+                '& .MuiChip-label': { px: 1 },
+                '&:hover': { borderColor: '#E07A7A', color: activeFilters.flagged ? '#000' : 'grey.300', bgcolor: activeFilters.flagged ? '#E07A7A' : 'transparent' },
+              }}
+            />
 
             {groups.map((group, gi) => {
               const groupColor = GROUP_COLORS[gi % GROUP_COLORS.length];
+              const selectedLabels = activeFilters.labels[group.id] ?? [];
               return [
                 <Stack key={`${group.id}-div`}
-                  sx={{ width: 1, height: 14, bgcolor: 'grey.800', borderRadius: 1, mx: 0.25, alignSelf: 'center' }} />,
+                  sx={{ width: 1, height: 14, bgcolor: `${groupColor}50`, borderRadius: 1, mx: 0.25, alignSelf: 'center' }} />,
                 <Typography key={`${group.id}-name`} variant="caption"
-                  sx={{ color: 'grey.600', fontSize: 11, alignSelf: 'center', flexShrink: 0 }}>
+                  sx={{ color: 'grey.500', fontSize: 11, alignSelf: 'center', flexShrink: 0 }}>
                   {group.name}:
                 </Typography>,
                 ...[...group.labels].sort((a, b) => a.localeCompare(b)).map(label => {
-                  const active = activeFilter?.type === 'label' &&
-                    activeFilter.groupId === group.id && activeFilter.label === label;
+                  const active = selectedLabels.includes(label);
                   return (
                     <Chip key={`${group.id}:${label}`} label={label} size="small"
-                      onClick={() => applyFilter({ type: 'label', groupId: group.id, label })}
+                      onClick={() => toggleLabelFilter(group.id, label)}
                       sx={{
                         height: 22, fontSize: 11, borderRadius: '999px',
                         bgcolor: active ? groupColor : 'transparent',
@@ -410,7 +464,7 @@ function App() {
                 <Stack direction="row" gap="3px">
                   {winSlice.map(globalI => {
                     const it = items[globalI];
-                    const labelled = groups.length > 0 && groups.every(g => it.labels[g.id]);
+                    const labelled = isFullyLabelled(it, groups);
                     const bg = globalI === idx ? "#fff" : it.flagged ? "#E07A7A" : labelled ? "#5BC8AF" : "#2a2f38";
                     return (
                       <Stack key={it.id} onClick={() => setIdx(globalI)}
@@ -421,7 +475,7 @@ function App() {
                   })}
                 </Stack>
                 <Typography variant="caption" sx={{ color: "grey.700", alignSelf: "flex-end", fontSize: 10 }}>
-                  {filteredIndices.length === 0 ? '0 results' : `${winStart + 1}–${Math.min(winStart + WIN, filteredIndices.length)} of ${filteredIndices.length}${activeFilter ? ' filtered' : ''}`}
+                  {filteredIndices.length === 0 ? '0 results' : `${winStart + 1}–${Math.min(winStart + WIN, filteredIndices.length)} of ${filteredIndices.length}${isFiltered ? ' filtered' : ''}`}
                 </Typography>
               </Stack>
             );
@@ -431,7 +485,7 @@ function App() {
           {filteredIndices.length === 0 ? (
             <Stack sx={{ py: 6, alignItems: 'center', gap: 1 }}>
               <Typography sx={{ color: 'grey.600' }}>No items match this filter</Typography>
-              <Button onClick={() => applyFilter(null)}
+              <Button onClick={clearFilters}
                 sx={{ color: 'grey.400', textTransform: 'none', fontSize: 13 }}>
                 Clear filter
               </Button>
@@ -440,7 +494,7 @@ function App() {
 
           {filteredIndices.length > 0 && <Stack direction="row" spacing={2} sx={{ alignItems: "stretch", justifyContent: "center" }}>
             <Paddle direction="prev" onClick={goPrev}
-              disabled={activeFilter ? filteredPos <= 0 : idx === 0} />
+              disabled={isFiltered ? filteredPos <= 0 : idx === 0} />
 
             <Stack spacing={1} sx={{ alignItems: "center", width: "100%", maxWidth: 480 }}>
               <Stack sx={{ position: "relative", width: "100%", aspectRatio: "1/1", overflow: "hidden", flexShrink: 0 }}>
@@ -492,12 +546,12 @@ function App() {
                 )}
               </Stack>
               <Typography variant="body2" sx={{ fontFamily: "monospace", color: "grey.500" }}>
-                {item.file} · ({activeFilter ? `${filteredPos + 1} of ${filteredIndices.length} filtered` : `${idx + 1} of ${items.length}`})
+                {item.file} · ({isFiltered ? `${filteredPos + 1} of ${filteredIndices.length} filtered` : `${idx + 1} of ${items.length}`})
               </Typography>
             </Stack>
 
             <Paddle direction="next" onClick={goNext}
-              disabled={activeFilter ? filteredPos >= filteredIndices.length - 1 : idx === items.length - 1} />
+              disabled={isFiltered ? filteredPos >= filteredIndices.length - 1 : idx === items.length - 1} />
           </Stack>}
 
           {/* Flag button + labels — hidden when filter yields no results */}
@@ -526,10 +580,13 @@ function App() {
               color={GROUP_COLORS[gi % GROUP_COLORS.length]}
               selectedLabel={item.labels[group.id]}
               suggestedLabel={item.suggestedLabels?.[group.id]}
+              allGroups={groups}
+              exclusions={group.exclusions ?? {}}
               onSelectLabel={(label) => setLabel(group.id, label)}
               onAddLabel={(label) => addLabelToGroup(group.id, label)}
               onRemoveLabel={(label) => removeLabelFromGroup(group.id, label)}
               onDeleteGroup={() => deleteGroup(group.id)}
+              onSetExclusion={(label, targetGroupId, exclude) => handleSetExclusion(group.id, label, targetGroupId, exclude)}
             />
           ))}
 

@@ -4,6 +4,18 @@ import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import JSZip from "jszip";
 
+// ── Shared logic ──────────────────────────────────────────────────────────────
+
+function isGroupExcluded(item, groupId, allGroups) {
+  for (const g of allGroups) {
+    if (g.id === groupId) continue;
+    const lbl = item.labels[g.id];
+    if (!lbl) continue;
+    if ((g.exclusions?.[lbl] ?? []).includes(groupId)) return true;
+  }
+  return false;
+}
+
 // ── Export helpers ────────────────────────────────────────────────────────────
 
 function zipName(groupName) {
@@ -80,7 +92,7 @@ function MiniBar({ pct, color }) {
 
 export default function StatsPanel({ items, groups, groupColors }) {
   const totalLabelled = items.filter(it =>
-    groups.length > 0 && groups.every(g => it.labels[g.id])
+    groups.length > 0 && groups.every(g => it.labels[g.id] || isGroupExcluded(it, g.id, groups))
   ).length;
   const totalFlagged = items.filter(it => it.flagged).length;
 
@@ -115,7 +127,7 @@ export default function StatsPanel({ items, groups, groupColors }) {
         {/* ── Per-group ── */}
         {groups.map((group, gi) => {
           const color = groupColors[gi % groupColors.length];
-          const assigned = items.filter(it => it.labels[group.id]).length;
+          const assigned = items.filter(it => it.labels[group.id] || isGroupExcluded(it, group.id, groups)).length;
           const pct = items.length ? Math.round((assigned / items.length) * 100) : 0;
 
           const distribution = [...group.labels]

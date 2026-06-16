@@ -211,7 +211,7 @@ export default function ImportDialog({ open, onClose, onImport }) {
           </Typography>
 
           <input ref={folderRef} type="file" webkitdirectory="" directory=""
-            style={{ display: 'none' }} onChange={handleFolderChange} />
+            style={{ display: 'none'}} onChange={handleFolderChange} />
 
           <Stack direction="row" alignItems="center" gap={1.5}>
             <Button
@@ -220,7 +220,7 @@ export default function ImportDialog({ open, onClose, onImport }) {
               startIcon={<FolderOpenIcon />}
               onClick={() => folderRef.current?.click()}
               sx={{ flexShrink: 0, borderColor: 'grey.700', color: 'grey.300',
-                '&:hover': { borderColor: 'grey.500', bgcolor: 'transparent' } }}
+                '&:hover': { borderColor: 'grey.500', bgcolor: 'transparent' }, marginTop: '10px' }}
             >
               {imageFiles.length > 0 ? 'Change folder' : 'Select folder'}
             </Button>
@@ -239,7 +239,7 @@ export default function ImportDialog({ open, onClose, onImport }) {
           </Stack>
 
           {folderMode === 'structured' && (
-            <Stack gap={2}>
+            <Stack gap={2} sx={{marginTop: "10px"}}>
               <LabelGrid labels={subfolderLabels} />
               <TextField
                 size="small"
@@ -248,6 +248,7 @@ export default function ImportDialog({ open, onClose, onImport }) {
                 placeholder="e.g. Material"
                 value={folderGroupName}
                 onChange={e => setFolderGroupName(e.target.value)}
+                sx={{ marginTop: '10px' }}
               />
             </Stack>
           )}

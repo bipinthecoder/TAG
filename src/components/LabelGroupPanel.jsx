@@ -6,22 +6,46 @@ import Typography from "@mui/material/Typography";
 import Paper from "@mui/material/Paper";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
+import Popover from "@mui/material/Popover";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import IconButton from "@mui/material/IconButton";
 import CloseIcon from "@mui/icons-material/Close";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 
-export default function LabelGroupPanel({ group, color, selectedLabel, suggestedLabel, onSelectLabel, onAddLabel, onRemoveLabel, onDeleteGroup }) {
+export default function LabelGroupPanel({
+    group, color, selectedLabel, suggestedLabel,
+    allGroups, exclusions, onSetExclusion,
+    onSelectLabel, onAddLabel, onRemoveLabel, onDeleteGroup,
+}) {
     const [editOpen, setEditOpen] = useState(false);
     const [newLabel, setNewLabel] = useState("");
+    const [dropdownAnchor, setDropdownAnchor] = useState(null);
+    const [dropdownLabel, setDropdownLabel] = useState(null);
+    const [hoveredLabel, setHoveredLabel] = useState(null);
+
+    const otherGroups = (allGroups ?? []).filter(g => g.id !== group.id);
 
     const handleAdd = () => {
         const trimmed = newLabel.trim();
         if (!trimmed) return;
         onAddLabel(trimmed);
         setNewLabel("");
+    };
+
+    const openDropdown = (e, label) => {
+        e.stopPropagation();
+        setDropdownAnchor(e.currentTarget);
+        setDropdownLabel(label);
+    };
+
+    const closeDropdown = () => {
+        setDropdownAnchor(null);
+        setDropdownLabel(null);
     };
 
     return (
@@ -46,13 +70,17 @@ export default function LabelGroupPanel({ group, color, selectedLabel, suggested
                 {[...group.labels].sort((a, b) => a.localeCompare(b)).map((label, i) => {
                     const confirmed = selectedLabel === label;
                     const suggested = !confirmed && suggestedLabel === label;
+                    const hasExclusions = otherGroups.length > 0 && (exclusions[label] ?? []).length > 0;
+                    const arrowVisible = hoveredLabel === label || hasExclusions;
                     return (
-                        <Tooltip key={label} title={confirmed ? label : suggested ? `${label} (suggested)` : label}
+                        <Tooltip key={label}
+                            title={confirmed ? label : suggested ? `${label} (suggested)` : label}
                             placement="top" arrow disableInteractive>
                             <Stack
                                 direction="row"
                                 alignItems="center"
-                                onClick={() => onSelectLabel(label)}
+                                onMouseEnter={() => setHoveredLabel(label)}
+                                onMouseLeave={() => setHoveredLabel(null)}
                                 sx={{
                                     cursor: "pointer",
                                     borderRadius: "999px",
@@ -66,42 +94,97 @@ export default function LabelGroupPanel({ group, color, selectedLabel, suggested
                                     "&:hover": { borderColor: color },
                                 }}
                             >
+                                {/* Number badge */}
                                 <Typography
                                     variant="caption"
+                                    onClick={() => onSelectLabel(label)}
                                     sx={{
-                                        px: 1,
-                                        py: 0.4,
-                                        flexShrink: 0,
+                                        px: 1, py: 0.4, flexShrink: 0,
                                         bgcolor: confirmed ? "rgba(0,0,0,0.25)" : suggested ? "rgba(255,255,255,0.04)" : "#1a1f27",
                                         color: confirmed ? "rgba(255,255,255,0.85)" : suggested ? color : "grey.600",
-                                        fontFamily: "monospace",
-                                        lineHeight: 1.6,
-                                        minWidth: 20,
-                                        textAlign: "center",
+                                        fontFamily: "monospace", lineHeight: 1.6, minWidth: 20, textAlign: "center",
                                     }}
                                 >
                                     {i + 1}
                                 </Typography>
+                                {/* Label text */}
                                 <Typography
                                     variant="caption"
+                                    onClick={() => onSelectLabel(label)}
                                     sx={{
-                                        px: 1.5,
-                                        py: 0.4,
+                                        px: 1, py: 0.4, flex: 1,
                                         color: confirmed ? "#000" : suggested ? "grey.200" : "grey.300",
                                         lineHeight: 1.6,
                                         fontWeight: confirmed ? 600 : suggested ? 500 : 400,
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
+                                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                                     }}
                                 >
                                     {label}
                                 </Typography>
+                                {/* Exclusion dropdown arrow — only when other groups exist */}
+                                {otherGroups.length > 0 && (
+                                    <Stack
+                                        alignItems="center"
+                                        justifyContent="center"
+                                        onClick={(e) => openDropdown(e, label)}
+                                        sx={{
+                                            px: 0.5, flexShrink: 0,
+                                            opacity: arrowVisible ? 1 : 0,
+                                            transition: "opacity 0.15s",
+                                            color: hasExclusions
+                                                ? (confirmed ? "rgba(0,0,0,0.6)" : color)
+                                                : (confirmed ? "rgba(0,0,0,0.4)" : "grey.600"),
+                                            "&:hover": { color: confirmed ? "rgba(0,0,0,0.9)" : "#fff" },
+                                        }}
+                                    >
+                                        <KeyboardArrowDownIcon sx={{ fontSize: 13 }} />
+                                    </Stack>
+                                )}
                             </Stack>
                         </Tooltip>
                     );
                 })}
             </Box>
+
+            {/* Exclusion popover */}
+            <Popover
+                open={Boolean(dropdownAnchor)}
+                anchorEl={dropdownAnchor}
+                onClose={closeDropdown}
+                anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+                transformOrigin={{ vertical: "top", horizontal: "center" }}
+                PaperProps={{
+                    sx: { bgcolor: "#1a1f27", border: "1px solid", borderColor: "grey.800", boxShadow: 6 },
+                }}
+            >
+                <Stack sx={{ p: 1.5, gap: 0.25, minWidth: 200 }}>
+                    <Typography variant="caption" sx={{ color: "grey.600", fontSize: 11, pb: 0.75 }}>
+                        Require labelling when "{dropdownLabel}" is selected:
+                    </Typography>
+                    {dropdownLabel && otherGroups.map(og => {
+                        const excluded = (exclusions[dropdownLabel] ?? []).includes(og.id);
+                        return (
+                            <FormControlLabel
+                                key={og.id}
+                                control={
+                                    <Checkbox
+                                        checked={!excluded}
+                                        onChange={() => onSetExclusion(dropdownLabel, og.id, !excluded)}
+                                        size="small"
+                                        sx={{ color: "grey.700", "&.Mui-checked": { color } }}
+                                    />
+                                }
+                                label={
+                                    <Typography variant="caption" sx={{ color: "grey.300", fontSize: 12 }}>
+                                        {og.name}
+                                    </Typography>
+                                }
+                                sx={{ m: 0 }}
+                            />
+                        );
+                    })}
+                </Stack>
+            </Popover>
 
             {/* Edit dialog */}
             <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="xs" fullWidth>
@@ -134,10 +217,10 @@ export default function LabelGroupPanel({ group, color, selectedLabel, suggested
                         </Button>
                     </Stack>
                 </DialogContent>
-                <DialogActions sx={{ justifyContent: 'space-between' }}>
+                <DialogActions sx={{ justifyContent: "space-between" }}>
                     <Button
                         onClick={() => { onDeleteGroup(); setEditOpen(false); }}
-                        sx={{ color: '#E07A7A', textTransform: 'none' }}
+                        sx={{ color: "#E07A7A", textTransform: "none" }}
                     >
                         Delete group
                     </Button>
