@@ -81,7 +81,7 @@ function StatRow({ label, value, color }) {
 
 function MiniBar({ pct, color }) {
   return (
-    <Stack sx={{ height: 3, bgcolor: 'grey.900', borderRadius: 1, overflow: 'hidden' }}>
+    <Stack sx={{ height: 3, bgcolor: '#008080', borderRadius: 1, overflow: 'hidden' }}>
       <Stack sx={{ height: '100%', width: `${pct}%`, bgcolor: color, borderRadius: 1,
         transition: 'width 0.3s ease' }} />
     </Stack>
@@ -106,7 +106,7 @@ export default function StatsPanel({ items, groups, groupColors }) {
         top: 0,
         overflowY: 'auto',
         borderRight: '1px solid',
-        borderColor: 'grey.900',
+        borderColor: '#008080',
         '&::-webkit-scrollbar': { width: 3 },
         '&::-webkit-scrollbar-thumb': { bgcolor: 'grey.800', borderRadius: 2 },
       }}
@@ -121,7 +121,7 @@ export default function StatsPanel({ items, groups, groupColors }) {
           <StatRow label="Total images" value={items.length} />
           <StatRow label="Fully labelled" value={totalLabelled} color="#5BC8AF" />
           <StatRow label="Unlabelled" value={items.length - totalLabelled} />
-          <StatRow label="Flagged" value={totalFlagged} color="#E07A7A" />
+          <StatRow label="Flagged" value={totalFlagged} color="warning.main" />
         </Stack>
 
         {/* ── Per-group ── */}
@@ -144,6 +144,7 @@ export default function StatsPanel({ items, groups, groupColors }) {
               {/* Group title + % */}
               <Stack direction="row" alignItems="center" gap={1}>
                 <Stack sx={{ width: 8, height: 8, borderRadius: '2px', bgcolor: color, flexShrink: 0 }} />
+                <Typography>&nbsp;</Typography>
                 <Typography variant="overline"
                   sx={{ flex: 1, color: 'grey.300', fontSize: 10, letterSpacing: 1.2, lineHeight: 1 }}>
                   {group.name}

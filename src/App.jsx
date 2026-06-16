@@ -339,7 +339,7 @@ function App() {
               <Typography variant="body1" sx={{ color: "grey.500" }}>
                 {labelledCount}/{items.length} labelled
                 {flaggedCount > 0 && (
-                  <Typography component="span" variant="body1" sx={{ color: "#E07A7A", ml: 1 }}>
+                  <Typography component="span" variant="body1" sx={{ color: "warning.main", ml: 1 }}>
                     · {flaggedCount} flagged
                   </Typography>
                 )}
@@ -415,11 +415,11 @@ function App() {
             <Chip label="Flagged" size="small" onClick={() => togglePreset('flagged')}
               sx={{
                 height: 22, fontSize: 11, borderRadius: '999px',
-                bgcolor: activeFilters.flagged ? '#E07A7A' : 'transparent',
+                bgcolor: activeFilters.flagged ? '#E76F51' : 'transparent',
                 color: activeFilters.flagged ? '#000' : 'grey.500',
-                border: '1px solid', borderColor: activeFilters.flagged ? '#E07A7A' : 'grey.800',
+                border: '1px solid', borderColor: activeFilters.flagged ? '#E76F51' : 'grey.800',
                 '& .MuiChip-label': { px: 1 },
-                '&:hover': { borderColor: '#E07A7A', color: activeFilters.flagged ? '#000' : 'grey.300', bgcolor: activeFilters.flagged ? '#E07A7A' : 'transparent' },
+                '&:hover': { borderColor: '#E76F51', color: activeFilters.flagged ? '#000' : 'grey.300', bgcolor: activeFilters.flagged ? '#E76F51' : 'transparent' },
               }}
             />
 
@@ -465,7 +465,7 @@ function App() {
                   {winSlice.map(globalI => {
                     const it = items[globalI];
                     const labelled = isFullyLabelled(it, groups);
-                    const bg = globalI === idx ? "#fff" : it.flagged ? "#E07A7A" : labelled ? "#5BC8AF" : "#2a2f38";
+                    const bg = globalI === idx ? "#fff" : it.flagged ? "warning.main" : labelled ? "#5BC8AF" : "#2a2f38";
                     return (
                       <Stack key={it.id} onClick={() => setIdx(globalI)}
                         sx={{ flex: 1, height: 5, borderRadius: 1, bgcolor: bg,
@@ -507,7 +507,7 @@ function App() {
                     bgcolor: "background.paper",
                     borderRadius: 3,
                     border: 3,
-                    borderColor: item.flagged ? "#E07A7A" : "warning.main",
+                    borderColor: "warning.main",
                     overflow: "hidden",
                   }}
                 >
@@ -533,7 +533,7 @@ function App() {
                       position: "absolute",
                       top: 12,
                       right: 12,
-                      bgcolor: "#E07A7A",
+                      bgcolor: "warning.main",
                       color: "#000",
                       px: 1.5,
                       py: 0.5,
@@ -563,10 +563,10 @@ function App() {
               maxWidth: 480,
               mx: "auto",
               width: "100%",
-              borderColor: "#E07A7A",
-              color: item.flagged ? "#000" : "#E07A7A",
-              bgcolor: item.flagged ? "#E07A7A" : "transparent",
-              "&:hover": { bgcolor: "#E07A7A", color: "#000", borderColor: "#E07A7A" },
+              borderColor: "warning.main",
+              color: item.flagged ? "#000" : "warning.main",
+              bgcolor: item.flagged ? "warning.main" : "transparent",
+              "&:hover": { bgcolor: "warning.main", color: "#000", borderColor: "warning.main" },
             }}
           >
             Flagged — not sure
