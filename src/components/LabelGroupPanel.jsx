@@ -1,9 +1,11 @@
 import { useState } from "react";
 import Button from "@mui/material/Button";
+import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Paper from "@mui/material/Paper";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -11,7 +13,7 @@ import DialogActions from "@mui/material/DialogActions";
 import IconButton from "@mui/material/IconButton";
 import CloseIcon from "@mui/icons-material/Close";
 
-export default function LabelGroupPanel({ group, color, selectedLabel, onSelectLabel, onAddLabel, onRemoveLabel }) {
+export default function LabelGroupPanel({ group, color, selectedLabel, suggestedLabel, onSelectLabel, onAddLabel, onRemoveLabel, onDeleteGroup }) {
     const [editOpen, setEditOpen] = useState(false);
     const [newLabel, setNewLabel] = useState("");
 
@@ -39,58 +41,67 @@ export default function LabelGroupPanel({ group, color, selectedLabel, onSelectL
                 </Button>
             </Stack>
 
-            {/* Numbered label chips */}
-            <Stack direction="row" flexWrap="wrap" gap={1}>
-                {group.labels.map((label, i) => {
-                    const selected = selectedLabel === label;
+            {/* Numbered label chips — 5 per row */}
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 1 }}>
+                {[...group.labels].sort((a, b) => a.localeCompare(b)).map((label, i) => {
+                    const confirmed = selectedLabel === label;
+                    const suggested = !confirmed && suggestedLabel === label;
                     return (
-                        <Stack
-                            key={label}
-                            direction="row"
-                            alignItems="center"
-                            onClick={() => onSelectLabel(label)}
-                            sx={{
-                                cursor: "pointer",
-                                borderRadius: "999px",
-                                border: "1px solid",
-                                borderColor: selected ? color : "grey.800",
-                                bgcolor: selected ? color : "transparent",
-                                overflow: "hidden",
-                                transition: "border-color 0.15s",
-                                "&:hover": { borderColor: color },
-                            }}
-                        >
-                            <Typography
-                                variant="caption"
+                        <Tooltip key={label} title={confirmed ? label : suggested ? `${label} (suggested)` : label}
+                            placement="top" arrow disableInteractive>
+                            <Stack
+                                direction="row"
+                                alignItems="center"
+                                onClick={() => onSelectLabel(label)}
                                 sx={{
-                                    px: 1,
-                                    py: 0.4,
-                                    bgcolor: selected ? "rgba(0,0,0,0.25)" : "#1a1f27",
-                                    color: selected ? "rgba(255,255,255,0.85)" : "grey.600",
-                                    fontFamily: "monospace",
-                                    lineHeight: 1.6,
-                                    minWidth: 20,
-                                    textAlign: "center",
+                                    cursor: "pointer",
+                                    borderRadius: "999px",
+                                    border: "1px solid",
+                                    borderStyle: suggested ? "dashed" : "solid",
+                                    borderColor: confirmed ? color : suggested ? color : "grey.800",
+                                    bgcolor: confirmed ? color : "transparent",
+                                    overflow: "hidden",
+                                    minWidth: 0,
+                                    transition: "border-color 0.15s, background-color 0.15s",
+                                    "&:hover": { borderColor: color },
                                 }}
                             >
-                                {i + 1}
-                            </Typography>
-                            <Typography
-                                variant="caption"
-                                sx={{
-                                    px: 1.5,
-                                    py: 0.4,
-                                    color: selected ? "#000" : "grey.300",
-                                    lineHeight: 1.6,
-                                    fontWeight: selected ? 600 : 400,
-                                }}
-                            >
-                                {label}
-                            </Typography>
-                        </Stack>
+                                <Typography
+                                    variant="caption"
+                                    sx={{
+                                        px: 1,
+                                        py: 0.4,
+                                        flexShrink: 0,
+                                        bgcolor: confirmed ? "rgba(0,0,0,0.25)" : suggested ? "rgba(255,255,255,0.04)" : "#1a1f27",
+                                        color: confirmed ? "rgba(255,255,255,0.85)" : suggested ? color : "grey.600",
+                                        fontFamily: "monospace",
+                                        lineHeight: 1.6,
+                                        minWidth: 20,
+                                        textAlign: "center",
+                                    }}
+                                >
+                                    {i + 1}
+                                </Typography>
+                                <Typography
+                                    variant="caption"
+                                    sx={{
+                                        px: 1.5,
+                                        py: 0.4,
+                                        color: confirmed ? "#000" : suggested ? "grey.200" : "grey.300",
+                                        lineHeight: 1.6,
+                                        fontWeight: confirmed ? 600 : suggested ? 500 : 400,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                    }}
+                                >
+                                    {label}
+                                </Typography>
+                            </Stack>
+                        </Tooltip>
                     );
                 })}
-            </Stack>
+            </Box>
 
             {/* Edit dialog */}
             <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="xs" fullWidth>
@@ -123,7 +134,13 @@ export default function LabelGroupPanel({ group, color, selectedLabel, onSelectL
                         </Button>
                     </Stack>
                 </DialogContent>
-                <DialogActions>
+                <DialogActions sx={{ justifyContent: 'space-between' }}>
+                    <Button
+                        onClick={() => { onDeleteGroup(); setEditOpen(false); }}
+                        sx={{ color: '#E07A7A', textTransform: 'none' }}
+                    >
+                        Delete group
+                    </Button>
                     <Button onClick={() => setEditOpen(false)}>Done</Button>
                 </DialogActions>
             </Dialog>
