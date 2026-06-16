@@ -114,8 +114,9 @@ export default function StatsPanel({ items, groups, groupColors }) {
       <Stack sx={{ p: 2, gap: 2.5 }}>
 
         {/* ── Overview ── */}
-        <Stack gap={1}>
-          <Typography variant="overline" sx={{ color: 'grey.600', fontSize: 10, lineHeight: 1 }}>
+        <Stack gap={2}>
+          <Typography variant="overline"
+            sx={{ flex: 1, color: 'grey.300', fontSize: 10, letterSpacing: 1.2, lineHeight: 1 }}>
             Overview
           </Typography>
           <StatRow label="Total images" value={items.length} />
@@ -142,7 +143,7 @@ export default function StatsPanel({ items, groups, groupColors }) {
               <Divider sx={{ borderColor: 'grey.900' }} />
 
               {/* Group title + % */}
-              <Stack direction="row" alignItems="center" gap={1}>
+              <Stack direction="row" alignItems="center" gap={2}>
                 <Stack sx={{ width: 8, height: 8, borderRadius: '2px', bgcolor: color, flexShrink: 0 }} />
                 <Typography>&nbsp;</Typography>
                 <Typography variant="overline"
@@ -157,13 +158,13 @@ export default function StatsPanel({ items, groups, groupColors }) {
               <MiniBar pct={pct} color={color} />
 
               {/* Counts */}
-              <Stack gap={0.5}>
+              <Stack gap={1}>
                 <StatRow label="Assigned" value={assigned} />
                 <StatRow label="Remaining" value={items.length - assigned} />
               </Stack>
 
               {/* Label distribution */}
-              <Stack gap={0.5}>
+              <Stack gap={2}>
                 {distribution.map(({ label, count }) => (
                   <Stack key={label} direction="row" alignItems="center" gap={1}>
                     <Typography variant="caption" sx={{
