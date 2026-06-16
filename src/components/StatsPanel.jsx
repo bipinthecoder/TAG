@@ -50,12 +50,17 @@ async function exportCSV(group, items) {
 async function exportFolder(group, items) {
   const zip = new JSZip();
   for (const item of items) {
+    if (!item.url) continue;
     const lbl = item.labels[group.id];
-    if (!lbl || !item.url) continue;
     try {
       const blob = await fetch(item.url).then(r => r.blob());
-      const safeLabel = lbl.replace(/[<>:"/\\|?*]/g, '_');
-      zip.folder(safeLabel).file(item.file, blob);
+      if (lbl) {
+        const safeLabel = lbl.replace(/[<>:"/\\|?*]/g, '_');
+        zip.folder(safeLabel).file(item.file, blob);
+      }
+      if (item.flagged) {
+        zip.folder('flagged').file(item.file, blob);
+      }
     } catch (e) {
       console.error(`Failed to add ${item.file}:`, e);
     }
