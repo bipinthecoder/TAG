@@ -65,7 +65,7 @@ function CsvPreview({ rows }) {
 
 function LabelGrid({ labels }) {
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0.5 }}>
+    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0.5, marginTop: "10px" }}>
       {labels.map(l => (
         <Chip
           key={l}
@@ -273,7 +273,7 @@ export default function ImportDialog({ open, onClose, onImport }) {
             <Button
               variant="text"
               size="small"
-              startIcon={<UploadFileIcon sx={{ fontSize: 14 }} />}
+              startIcon={<UploadFileIcon sx={{ fontSize: 14, marginTop: "10px" }} />}
               onClick={() => csvRef.current?.click()}
               sx={{ color: 'grey.500', textTransform: 'none', flexShrink: 0,
                 '&:hover': { color: 'grey.300', bgcolor: 'transparent' } }}
@@ -324,6 +324,7 @@ export default function ImportDialog({ open, onClose, onImport }) {
                 label="Group name"
                 placeholder="e.g. Semantic"
                 value={entry.groupName}
+                sx = {{marginTop: "10px"}}
                 onChange={e => setCsvEntries(p =>
                   p.map(c => c.id === entry.id ? { ...c, groupName: e.target.value } : c)
                 )}
