@@ -97,6 +97,10 @@ import ImportDialog from './components/ImportDialog';
 import ZoomOverlay from './components/ZoomOverlay';
 import StatsPanel from './components/StatsPanel';
 import { ThemeProvider, theme, GROUP_COLORS } from './components/theme';
+import {
+  hasSession, saveAnnotations, persistBlobs,
+  loadSession, loadBlobUrl, getSavedMeta, clearSession,
+} from './persistence';
 
 function App() {
   const [idx, setIdx] = useState(0);
@@ -106,6 +110,7 @@ function App() {
   const [autoConfirmSuggested, setAutoConfirmSuggested] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(true);
 
   const [activeFilters, setActiveFilters] = useState(EMPTY_FILTERS);
 
@@ -146,8 +151,48 @@ function App() {
     });
   };
 
-  // Auto-open import on first load
-  useEffect(() => { setImportOpen(true); }, []);
+  // ── Session restore on mount ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!hasSession()) {
+      setSessionLoading(false);
+      setImportOpen(true);
+      return;
+    }
+    loadSession().then(saved => {
+      if (saved?.items?.length) {
+        setItems(saved.items);
+        setGroups(saved.groups);
+      } else {
+        setImportOpen(true);
+      }
+      setSessionLoading(false);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Debounced annotation save ────────────────────────────────────────────────
+  const saveTimerRef = useRef(null);
+  useEffect(() => {
+    if (!items.length) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => saveAnnotations(groups, items), 600);
+    return () => clearTimeout(saveTimerRef.current);
+  }, [items, groups]);
+
+  // ── Lazy blob loading — load current image + ±2 neighbours from IDB ─────────
+  useEffect(() => {
+    if (!items.length) return;
+    for (let offset = -2; offset <= 2; offset++) {
+      const i = idx + offset;
+      if (i < 0 || i >= items.length) continue;
+      if (items[i]?.url) continue;
+      const file = items[i]?.file;
+      if (!file) continue;
+      loadBlobUrl(file).then(url => {
+        if (!url) return;
+        setItems(prev => prev.map(it => it.file === file && !it.url ? { ...it, url } : it));
+      });
+    }
+  }, [idx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close zoom when navigating to a different image
   useEffect(() => { setZoomed(false); }, [idx]);
@@ -161,10 +206,32 @@ function App() {
   }, [zoomed]);
 
   const handleImport = ({ items: newItems, groups: newGroups }) => {
-    setItems(newItems);
-    setGroups(newGroups);
-    setIdx(0);
-    setActiveFilters(EMPTY_FILTERS);
+    // Merge saved labels onto re-imported items by matching group names
+    getSavedMeta().then(saved => {
+      let mergedItems = newItems;
+      if (saved?.items?.length && saved?.groups?.length) {
+        const savedItemMap = new Map(saved.items.map(it => [it.file, it]));
+        const savedNameToId = new Map(saved.groups.map(g => [g.name, g.id]));
+        mergedItems = newItems.map(it => {
+          const savedIt = savedItemMap.get(it.file);
+          if (!savedIt) return it;
+          const labels = {};
+          const suggestedLabels = {};
+          for (const ng of newGroups) {
+            const oldId = savedNameToId.get(ng.name);
+            if (oldId && savedIt.labels?.[oldId])          labels[ng.id]          = savedIt.labels[oldId];
+            if (oldId && savedIt.suggestedLabels?.[oldId]) suggestedLabels[ng.id] = savedIt.suggestedLabels[oldId];
+          }
+          return { ...it, labels, suggestedLabels, flagged: savedIt.flagged ?? false };
+        });
+      }
+      setItems(mergedItems);
+      setGroups(newGroups);
+      setIdx(0);
+      setActiveFilters(EMPTY_FILTERS);
+      // Cache blobs in IndexedDB in the background
+      persistBlobs(newItems);
+    });
   };
 
   const item = items[idx];
@@ -276,6 +343,15 @@ function App() {
     }));
   };
 
+  const handleNewSession = () => {
+    clearSession();
+    setItems([]);
+    setGroups([]);
+    setIdx(0);
+    setActiveFilters(EMPTY_FILTERS);
+    setImportOpen(true);
+  };
+
   const addGroup = () => {
     const name = newGroupName.trim();
     if (!name) return;
@@ -305,7 +381,11 @@ function App() {
         onImport={handleImport}
       />
 
-      {items.length === 0 ? (
+      {sessionLoading ? (
+        <Stack sx={{ minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}>
+          <Typography sx={{ color: 'grey.600' }}>Restoring session…</Typography>
+        </Stack>
+      ) : items.length === 0 ? (
         <Stack sx={{ minHeight: "100vh", alignItems: "center", justifyContent: "center", gap: 2 }}>
           <Typography variant="h6" sx={{ color: "grey.500" }}>No dataset loaded</Typography>
           <Typography variant="body2" sx={{ color: "grey.700" }}>
@@ -386,6 +466,14 @@ function App() {
                   '&:hover': { color: 'grey.300' } }}
               >
                 Import
+              </Button>
+              <Button
+                size="small"
+                onClick={handleNewSession}
+                sx={{ color: "grey.700", textTransform: "none", fontSize: 12,
+                  '&:hover': { color: '#E07A7A' } }}
+              >
+                New session
               </Button>
             </Stack>
           </Stack>

@@ -38,7 +38,7 @@ async function exportCSV(group, items) {
   const rows = ['filename,label'];
   for (const item of items) {
     const lbl = item.labels[group.id];
-    if (lbl) rows.push(`${item.file},${lbl}`);
+    if (lbl && !item.flagged) rows.push(`${item.file},${lbl}`);
   }
   const csvContent = rows.join('\n');
   const zip = new JSZip();
@@ -54,7 +54,7 @@ async function exportFolder(group, items) {
     const lbl = item.labels[group.id];
     try {
       const blob = await fetch(item.url).then(r => r.blob());
-      if (lbl) {
+      if (lbl && !item.flagged) {
         const safeLabel = lbl.replace(/[<>:"/\\|?*]/g, '_');
         zip.folder(safeLabel).file(item.file, blob);
       }
