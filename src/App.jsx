@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -29,6 +29,14 @@ function parseCSV(text) {
     if (filename && label) result.push({ filename, label });
   }
   return result;
+}
+
+function matchesFilter(item, filter, groups) {
+  if (!filter) return true;
+  if (filter.type === 'flagged') return item.flagged;
+  if (filter.type === 'unlabelled') return groups.length > 0 && groups.some(g => !item.labels[g.id]);
+  if (filter.type === 'label') return item.labels[filter.groupId] === filter.label;
+  return true;
 }
 
 function CsvPreview({ rows }) {
@@ -78,6 +86,21 @@ function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [zoomed, setZoomed] = useState(false);
 
+  const [activeFilter, setActiveFilter] = useState(null);
+
+  const filteredIndices = useMemo(
+    () => items.map((_, i) => i).filter(i => matchesFilter(items[i], activeFilter, groups)),
+    [items, activeFilter, groups]
+  );
+
+  const applyFilter = (filter) => {
+    setActiveFilter(filter);
+    if (filter) {
+      const first = items.findIndex(it => matchesFilter(it, filter, groups));
+      if (first !== -1 && first !== idx) setIdx(first);
+    }
+  };
+
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupCSV, setNewGroupCSV] = useState(null);
@@ -112,6 +135,7 @@ function App() {
     setItems(newItems);
     setGroups(newGroups);
     setIdx(0);
+    setActiveFilter(null);
   };
 
   const item = items[idx];
@@ -133,13 +157,23 @@ function App() {
     });
   };
 
+  const filteredPos = filteredIndices.indexOf(idx);
+
   const goPrev = () => {
     if (autoConfirmSuggested) setItems(prev => promoteSuggested(prev, idx));
-    setIdx(Math.max(0, idx - 1));
+    if (activeFilter) {
+      if (filteredPos > 0) setIdx(filteredIndices[filteredPos - 1]);
+    } else {
+      setIdx(Math.max(0, idx - 1));
+    }
   };
   const goNext = () => {
     if (autoConfirmSuggested) setItems(prev => promoteSuggested(prev, idx));
-    setIdx(Math.min(items.length - 1, idx + 1));
+    if (activeFilter) {
+      if (filteredPos < filteredIndices.length - 1) setIdx(filteredIndices[filteredPos + 1]);
+    } else {
+      setIdx(Math.min(items.length - 1, idx + 1));
+    }
   };
 
   const setLabel = (groupId, label) => {
@@ -157,8 +191,12 @@ function App() {
 
     if (autoAdvance && groups.length > 0) {
       const updated = newItems[idx];
-      if (groups.every(g => updated.labels[g.id]) && idx < items.length - 1) {
-        setIdx(idx + 1);
+      if (groups.every(g => updated.labels[g.id])) {
+        const indices = activeFilter
+          ? newItems.map((_, i) => i).filter(i => matchesFilter(newItems[i], activeFilter, groups))
+          : newItems.map((_, i) => i);
+        const pos = indices.indexOf(idx);
+        if (pos < indices.length - 1) setIdx(indices[pos + 1]);
       }
     }
   };
@@ -308,38 +346,101 @@ function App() {
             </Stack>
           </Stack>
 
-          {/* Progress bar – 40-item window */}
+          {/* Filter bar */}
+          <Stack direction="row" flexWrap="wrap" gap={0.75} alignItems="center">
+            {[
+              { label: 'All', filter: null },
+              { label: 'Unlabelled', filter: { type: 'unlabelled' } },
+              { label: 'Flagged', filter: { type: 'flagged' }, color: '#E07A7A' },
+            ].map(({ label, filter, color }) => {
+              const active = filter === null ? !activeFilter : activeFilter?.type === filter?.type;
+              const ac = color ?? '#5BC8AF';
+              return (
+                <Chip key={label} label={label} size="small" onClick={() => applyFilter(filter)}
+                  sx={{
+                    height: 22, fontSize: 11, borderRadius: '999px',
+                    bgcolor: active ? ac : 'transparent',
+                    color: active ? '#000' : 'grey.500',
+                    border: '1px solid', borderColor: active ? ac : 'grey.800',
+                    '& .MuiChip-label': { px: 1 },
+                    '&:hover': { borderColor: ac, color: active ? '#000' : 'grey.300', bgcolor: active ? ac : 'transparent' },
+                  }}
+                />
+              );
+            })}
+
+            {groups.map((group, gi) => {
+              const groupColor = GROUP_COLORS[gi % GROUP_COLORS.length];
+              return [
+                <Stack key={`${group.id}-div`}
+                  sx={{ width: 1, height: 14, bgcolor: 'grey.800', borderRadius: 1, mx: 0.25, alignSelf: 'center' }} />,
+                <Typography key={`${group.id}-name`} variant="caption"
+                  sx={{ color: 'grey.600', fontSize: 11, alignSelf: 'center', flexShrink: 0 }}>
+                  {group.name}:
+                </Typography>,
+                ...[...group.labels].sort((a, b) => a.localeCompare(b)).map(label => {
+                  const active = activeFilter?.type === 'label' &&
+                    activeFilter.groupId === group.id && activeFilter.label === label;
+                  return (
+                    <Chip key={`${group.id}:${label}`} label={label} size="small"
+                      onClick={() => applyFilter({ type: 'label', groupId: group.id, label })}
+                      sx={{
+                        height: 22, fontSize: 11, borderRadius: '999px',
+                        bgcolor: active ? groupColor : 'transparent',
+                        color: active ? '#000' : 'grey.500',
+                        border: '1px solid', borderColor: active ? groupColor : 'grey.800',
+                        '& .MuiChip-label': { px: 1 },
+                        '&:hover': { borderColor: groupColor, color: active ? '#000' : 'grey.300', bgcolor: active ? groupColor : 'transparent' },
+                      }}
+                    />
+                  );
+                }),
+              ];
+            })}
+          </Stack>
+
+          {/* Progress bar – 40-item window within filtered set */}
           {(() => {
             const WIN = 40;
-            const winStart = Math.floor(idx / WIN) * WIN;
-            const winItems = items.slice(winStart, winStart + WIN);
+            const displayPos = filteredPos === -1 ? 0 : filteredPos;
+            const winStart = Math.floor(displayPos / WIN) * WIN;
+            const winSlice = filteredIndices.slice(winStart, winStart + WIN);
             return (
               <Stack gap="3px">
                 <Stack direction="row" gap="3px">
-                  {winItems.map((it, wi) => {
-                    const i = winStart + wi;
+                  {winSlice.map(globalI => {
+                    const it = items[globalI];
                     const labelled = groups.length > 0 && groups.every(g => it.labels[g.id]);
-                    const bg = i === idx ? "#fff" : it.flagged ? "#E07A7A" : labelled ? "#5BC8AF" : "#2a2f38";
+                    const bg = globalI === idx ? "#fff" : it.flagged ? "#E07A7A" : labelled ? "#5BC8AF" : "#2a2f38";
                     return (
-                      <Stack
-                        key={it.id}
-                        onClick={() => setIdx(i)}
+                      <Stack key={it.id} onClick={() => setIdx(globalI)}
                         sx={{ flex: 1, height: 5, borderRadius: 1, bgcolor: bg,
-                          cursor: "pointer", opacity: i === idx ? 1 : 0.75 }}
+                          cursor: "pointer", opacity: globalI === idx ? 1 : 0.75 }}
                       />
                     );
                   })}
                 </Stack>
                 <Typography variant="caption" sx={{ color: "grey.700", alignSelf: "flex-end", fontSize: 10 }}>
-                  {winStart + 1}–{Math.min(winStart + WIN, items.length)} of {items.length}
+                  {filteredIndices.length === 0 ? '0 results' : `${winStart + 1}–${Math.min(winStart + WIN, filteredIndices.length)} of ${filteredIndices.length}${activeFilter ? ' filtered' : ''}`}
                 </Typography>
               </Stack>
             );
           })()}
 
           {/* Image row */}
-          <Stack direction="row" spacing={2} sx={{ alignItems: "stretch", justifyContent: "center" }}>
-            <Paddle direction="prev" onClick={goPrev} disabled={idx === 0} />
+          {filteredIndices.length === 0 ? (
+            <Stack sx={{ py: 6, alignItems: 'center', gap: 1 }}>
+              <Typography sx={{ color: 'grey.600' }}>No items match this filter</Typography>
+              <Button onClick={() => applyFilter(null)}
+                sx={{ color: 'grey.400', textTransform: 'none', fontSize: 13 }}>
+                Clear filter
+              </Button>
+            </Stack>
+          ) : null}
+
+          {filteredIndices.length > 0 && <Stack direction="row" spacing={2} sx={{ alignItems: "stretch", justifyContent: "center" }}>
+            <Paddle direction="prev" onClick={goPrev}
+              disabled={activeFilter ? filteredPos <= 0 : idx === 0} />
 
             <Stack spacing={1} sx={{ alignItems: "center", width: "100%", maxWidth: 480 }}>
               <Stack sx={{ position: "relative", width: "100%", aspectRatio: "1/1", overflow: "hidden", flexShrink: 0 }}>
@@ -391,15 +492,16 @@ function App() {
                 )}
               </Stack>
               <Typography variant="body2" sx={{ fontFamily: "monospace", color: "grey.500" }}>
-                {item.file} · ({idx + 1} of {items.length})
+                {item.file} · ({activeFilter ? `${filteredPos + 1} of ${filteredIndices.length} filtered` : `${idx + 1} of ${items.length}`})
               </Typography>
             </Stack>
 
-            <Paddle direction="next" onClick={goNext} disabled={idx === items.length - 1} />
-          </Stack>
+            <Paddle direction="next" onClick={goNext}
+              disabled={activeFilter ? filteredPos >= filteredIndices.length - 1 : idx === items.length - 1} />
+          </Stack>}
 
-          {/* Flag button */}
-          <Button
+          {/* Flag button + labels — hidden when filter yields no results */}
+          {filteredIndices.length > 0 && <Button
             onClick={flagItem}
             startIcon={<FlagIcon />}
             variant={item.flagged ? "contained" : "outlined"}
@@ -414,9 +516,9 @@ function App() {
             }}
           >
             Flagged — not sure
-          </Button>
+          </Button>}
 
-          {/* Label panels */}
+          {filteredIndices.length > 0 && <>{/* Label panels */}
           {groups.map((group, gi) => (
             <LabelGroupPanel
               key={group.id}
@@ -430,6 +532,8 @@ function App() {
               onDeleteGroup={() => deleteGroup(group.id)}
             />
           ))}
+
+          </>}
 
           <Button
             onClick={() => setGroupDialogOpen(true)}
