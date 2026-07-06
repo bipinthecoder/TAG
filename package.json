@@ -1,13 +1,26 @@
 {
-  "name": "tag",
-  "private": true,
-  "version": "0.0.0",
+  "name": "tag-image-labeller",
+  "version": "1.0.0",
   "type": "module",
+  "description": "A lightweight broswer-based whole image labelling tool with multi-level classification, CSV/folder export.",
+  "keywords": ["image-labelling", "annotation", "classification", "react", "taxonomy"],
+  "author": "Bipin Babu",
+  "homepage": "https://github.com/bipinthecoder/TAG",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bipinthecoder/TAG.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "tag-image-labeller": "./bin/tag-image-labeller.js"
+  },
+  "files": ["dist", "bin"],
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -15,8 +28,10 @@
     "@mui/icons-material": "^9.1.1",
     "@mui/material": "^9.1.1",
     "jszip": "^3.10.1",
+    "open": "^11.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "serve-handler": "^6.1.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
