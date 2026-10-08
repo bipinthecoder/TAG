@@ -185,11 +185,11 @@ function App() {
       const i = idx + offset;
       if (i < 0 || i >= items.length) continue;
       if (items[i]?.url) continue;
-      const file = items[i]?.file;
-      if (!file) continue;
-      loadBlobUrl(file).then(url => {
+      const key = items[i] && (items[i].key ?? items[i].file);
+      if (!key) continue;
+      loadBlobUrl(key).then(url => {
         if (!url) return;
-        setItems(prev => prev.map(it => it.file === file && !it.url ? { ...it, url } : it));
+        setItems(prev => prev.map(it => (it.key ?? it.file) === key && !it.url ? { ...it, url } : it));
       });
     }
   }, [idx]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -210,10 +210,11 @@ function App() {
     getSavedMeta().then(saved => {
       let mergedItems = newItems;
       if (saved?.items?.length && saved?.groups?.length) {
-        const savedItemMap = new Map(saved.items.map(it => [it.file, it]));
+        const savedByKey  = new Map(saved.items.map(it => [it.key ?? it.file, it]));
+        const savedByFile = new Map(saved.items.map(it => [it.file, it]));
         const savedNameToId = new Map(saved.groups.map(g => [g.name, g.id]));
         mergedItems = newItems.map(it => {
-          const savedIt = savedItemMap.get(it.file);
+          const savedIt = savedByKey.get(it.key) ?? savedByFile.get(it.file);
           if (!savedIt) return it;
           const labels = {};
           const suggestedLabels = {};
@@ -253,10 +254,22 @@ function App() {
 
   const filteredPos = filteredIndices.indexOf(idx);
 
+  // Neighbours of the current image within the filtered set. The current image
+  // may no longer match the filter (e.g. it was just relabelled), so look for the
+  // nearest matching indices around idx instead of relying on its exact position.
+  const prevFilteredIdx = (() => {
+    for (let k = filteredIndices.length - 1; k >= 0; k--) if (filteredIndices[k] < idx) return filteredIndices[k];
+    return null;
+  })();
+  const nextFilteredIdx = (() => {
+    for (const i of filteredIndices) if (i > idx) return i;
+    return null;
+  })();
+
   const goPrev = () => {
     if (autoConfirmSuggested) setItems(prev => promoteSuggested(prev, idx));
     if (isFiltered) {
-      if (filteredPos > 0) setIdx(filteredIndices[filteredPos - 1]);
+      if (prevFilteredIdx !== null) setIdx(prevFilteredIdx);
     } else {
       setIdx(Math.max(0, idx - 1));
     }
@@ -264,7 +277,7 @@ function App() {
   const goNext = () => {
     if (autoConfirmSuggested) setItems(prev => promoteSuggested(prev, idx));
     if (isFiltered) {
-      if (filteredPos < filteredIndices.length - 1) setIdx(filteredIndices[filteredPos + 1]);
+      if (nextFilteredIdx !== null) setIdx(nextFilteredIdx);
     } else {
       setIdx(Math.min(items.length - 1, idx + 1));
     }
@@ -289,8 +302,9 @@ function App() {
         const indices = isFiltered
           ? newItems.map((_, i) => i).filter(i => matchesFilters(newItems[i], activeFilters, groups))
           : newItems.map((_, i) => i);
-        const pos = indices.indexOf(idx);
-        if (pos < indices.length - 1) setIdx(indices[pos + 1]);
+        // idx may have just dropped out of the filter; advance to the next match after it
+        const next = indices.find(i => i > idx);
+        if (next !== undefined) setIdx(next);
       }
     }
   };
@@ -544,7 +558,10 @@ function App() {
           {/* Progress bar – 40-item window within filtered set */}
           {(() => {
             const WIN = 40;
-            const displayPos = filteredPos === -1 ? 0 : filteredPos;
+            // If the current image isn't in the filtered set, keep the window where it was
+            const displayPos = filteredPos !== -1
+              ? filteredPos
+              : Math.min(filteredIndices.filter(i => i < idx).length, filteredIndices.length - 1);
             const winStart = Math.floor(displayPos / WIN) * WIN;
             const winSlice = filteredIndices.slice(winStart, winStart + WIN);
             return (
@@ -582,7 +599,7 @@ function App() {
 
           {filteredIndices.length > 0 && <Stack direction="row" spacing={2} sx={{ alignItems: "stretch", justifyContent: "center" }}>
             <Paddle direction="prev" onClick={goPrev}
-              disabled={isFiltered ? filteredPos <= 0 : idx === 0} />
+              disabled={isFiltered ? prevFilteredIdx === null : idx === 0} />
 
             <Stack spacing={1} sx={{ alignItems: "center", width: "100%", maxWidth: 480 }}>
               <Stack sx={{ position: "relative", width: "100%", aspectRatio: "1/1", overflow: "hidden", flexShrink: 0 }}>
@@ -634,12 +651,12 @@ function App() {
                 )}
               </Stack>
               <Typography variant="body2" sx={{ fontFamily: "monospace", color: "grey.500" }}>
-                {item.file} · ({isFiltered ? `${filteredPos + 1} of ${filteredIndices.length} filtered` : `${idx + 1} of ${items.length}`})
+                {item.file} · ({isFiltered ? (filteredPos === -1 ? `not in filter · ${filteredIndices.length} filtered` : `${filteredPos + 1} of ${filteredIndices.length} filtered`) : `${idx + 1} of ${items.length}`})
               </Typography>
             </Stack>
 
             <Paddle direction="next" onClick={goNext}
-              disabled={isFiltered ? filteredPos >= filteredIndices.length - 1 : idx === items.length - 1} />
+              disabled={isFiltered ? nextFilteredIdx === null : idx === items.length - 1} />
           </Stack>}
 
           {/* Flag button + labels — hidden when filter yields no results */}

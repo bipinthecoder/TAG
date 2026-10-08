@@ -62,9 +62,10 @@ export async function saveAnnotations(groups, items) {
     const db = await openDB();
     const payload = {
       groups,
-      items: items.map(({ id, file, labels, suggestedLabels, flagged }) => ({
+      items: items.map(({ id, file, key, labels, suggestedLabels, flagged }) => ({
         id,
         file,
+        key: key ?? file,
         labels,
         suggestedLabels: suggestedLabels ?? {},
         flagged,
@@ -91,8 +92,10 @@ export async function persistBlobs(items) {
           if (!item.url) return;
           try {
             const blob = await fetch(item.url).then(r => r.blob());
-            await dbPut(db, BLOBS, item.file, blob);
-          } catch { /* skip individual failures silently */ }
+            await dbPut(db, BLOBS, item.key ?? item.file, blob);
+          } catch (e) {
+            console.warn('[TAG] persistBlobs failed for', item.key ?? item.file, e);
+          }
         })
       );
       // Yield between batches to keep UI responsive
@@ -124,17 +127,22 @@ export async function loadSession() {
 }
 
 /**
- * Fetch a single image blob from IndexedDB and create a blob URL.
+ * Fetch a single image blob from IndexedDB by item key.
  * Returns null if the blob is not cached (evicted or never stored).
  */
-export async function loadBlobUrl(filename) {
+export async function loadBlob(key) {
   try {
-    const db   = await openDB();
-    const blob = await dbGet(db, BLOBS, filename);
-    return blob ? URL.createObjectURL(blob) : null;
+    const db = await openDB();
+    return await dbGet(db, BLOBS, key);
   } catch {
     return null;
   }
+}
+
+/** Fetch a cached blob and create a blob URL, or null if not cached. */
+export async function loadBlobUrl(key) {
+  const blob = await loadBlob(key);
+  return blob ? URL.createObjectURL(blob) : null;
 }
 
 /**
