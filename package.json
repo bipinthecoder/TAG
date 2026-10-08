@@ -1,6 +1,6 @@
 {
   "name": "tag-image-labeller",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "description": "A lightweight broswer-based whole image labelling tool with multi-level classification, CSV/folder export.",
   "keywords": ["image-labelling", "annotation", "classification", "react", "taxonomy"],

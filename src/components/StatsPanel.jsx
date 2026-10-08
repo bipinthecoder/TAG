@@ -9,6 +9,7 @@ import DialogActions from "@mui/material/DialogActions";
 import { useState } from "react";
 import JSZip from "jszip";
 import { loadBlob } from "../persistence";
+import { version } from "../../package.json";
 
 // ── Shared logic ──────────────────────────────────────────────────────────────
 
@@ -261,6 +262,12 @@ export default function StatsPanel({ items, groups, groupColors }) {
         })}
 
       </Stack>
+
+      {/* ── Version (from package.json) ── */}
+      <Typography variant="caption"
+        sx={{ mt: 'auto', px: 2, pb: 1.5, color: 'grey.700', fontSize: 10, letterSpacing: 0.5 }}>
+        Version {version}
+      </Typography>
 
       {/* ── Export confirmation ── */}
       <Dialog open={!!pending} onClose={() => setPending(null)} maxWidth="xs" fullWidth>
