@@ -2,7 +2,13 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import { useState } from "react";
 import JSZip from "jszip";
+import { loadBlob } from "../persistence";
 
 // ── Shared logic ──────────────────────────────────────────────────────────────
 
@@ -17,6 +23,26 @@ function isGroupExcluded(item, groupId, allGroups) {
 }
 
 // ── Export helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Counts what an export will contain, using the same rules as exportCSV /
+ * exportFolder: labelled + not flagged go to label rows; flagged images go to
+ * the 'flagged' folder (folder export only).
+ */
+function exportSummary(group, items, type) {
+  const counts = new Map();
+  let flagged = 0;
+  for (const item of items) {
+    const lbl = item.labels[group.id];
+    if (lbl && !item.flagged) counts.set(lbl, (counts.get(lbl) ?? 0) + 1);
+    else if (item.flagged && type === 'folder') flagged++;
+  }
+  const rows = [...counts]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const total = rows.reduce((s, r) => s + r.count, 0) + flagged;
+  return { total, rows, flagged };
+}
 
 function zipName(groupName) {
   const safe = groupName.replace(/\s+/g, '_').replace(/[^A-Za-z0-9_-]/g, '');
@@ -49,24 +75,52 @@ async function exportCSV(group, items) {
 
 async function exportFolder(group, items) {
   const zip = new JSZip();
+  const used = new Set();   // zip paths already taken, to avoid overwriting same-named files
+  const missing = [];
+
+  // Add under folder/name, appending _2, _3... if the name is already taken
+  const addUnique = (folder, name, blob) => {
+    const dot = name.lastIndexOf('.');
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const ext  = dot > 0 ? name.slice(dot) : '';
+    let candidate = name;
+    for (let n = 2; used.has(`${folder}/${candidate}`); n++) candidate = `${stem}_${n}${ext}`;
+    used.add(`${folder}/${candidate}`);
+    zip.folder(folder).file(candidate, blob);
+  };
+
   for (const item of items) {
-    if (!item.url) continue;
     const lbl = item.labels[group.id];
+    const wanted = item.flagged || lbl;
+    if (!wanted) continue;
     try {
-      const blob = await fetch(item.url).then(r => r.blob());
-      if (lbl && !item.flagged) {
-        const safeLabel = lbl.replace(/[<>:"/\\|?*]/g, '_');
-        zip.folder(safeLabel).file(item.file, blob);
-      }
+      // In-memory URL if available, otherwise fall back to the IndexedDB cache
+      const blob = item.url
+        ? await fetch(item.url).then(r => r.blob())
+        : await loadBlob(item.key ?? item.file);
+      if (!blob) { missing.push(item.file); continue; }
       if (item.flagged) {
-        zip.folder('flagged').file(item.file, blob);
+        addUnique('flagged', item.file, blob);
+      } else {
+        addUnique(lbl.replace(/[<>:"/\\|?*]/g, '_'), item.file, blob);
       }
     } catch (e) {
       console.error(`Failed to add ${item.file}:`, e);
+      missing.push(item.file);
     }
+  }
+
+  // Never silently drop images: list any that could not be exported
+  if (missing.length) {
+    zip.file('MISSING_IMAGES.txt',
+      `These ${missing.length} labelled images could not be exported (image data not available). ` +
+      `Re-import the original folder and export again.\n\n${missing.join('\n')}`);
   }
   const blob = await zip.generateAsync({ type: 'blob' });
   downloadBlob(blob, zipName(group.name));
+  if (missing.length) {
+    window.alert(`${missing.length} labelled image(s) could not be exported because their image data is unavailable. They are listed in MISSING_IMAGES.txt inside the zip. Re-import the original folder and export again.`);
+  }
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -96,6 +150,8 @@ function MiniBar({ pct, color }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function StatsPanel({ items, groups, groupColors }) {
+  const [pending, setPending] = useState(null);  // { type: 'folder' | 'csv', group }
+
   const totalLabelled = items.filter(it =>
     groups.length > 0 && groups.every(g => it.labels[g.id] || isGroupExcluded(it, g.id, groups))
   ).length;
@@ -187,13 +243,13 @@ export default function StatsPanel({ items, groups, groupColors }) {
 
               {/* Export buttons */}
               <Stack direction="row" gap={1}>
-                <Button size="small" variant="outlined" onClick={() => exportFolder(group, items)}
+                <Button size="small" variant="outlined" onClick={() => setPending({ type: 'folder', group })}
                   sx={{ flex: 1, fontSize: 11, py: 0.5, textTransform: 'none',
                     borderColor: 'grey.800', color: 'grey.500',
                     '&:hover': { borderColor: 'grey.600', color: 'grey.200', bgcolor: 'transparent' } }}>
                   Folder
                 </Button>
-                <Button size="small" variant="outlined" onClick={() => exportCSV(group, items)}
+                <Button size="small" variant="outlined" onClick={() => setPending({ type: 'csv', group })}
                   sx={{ flex: 1, fontSize: 11, py: 0.5, textTransform: 'none',
                     borderColor: 'grey.800', color: 'grey.500',
                     '&:hover': { borderColor: 'grey.600', color: 'grey.200', bgcolor: 'transparent' } }}>
@@ -205,6 +261,59 @@ export default function StatsPanel({ items, groups, groupColors }) {
         })}
 
       </Stack>
+
+      {/* ── Export confirmation ── */}
+      <Dialog open={!!pending} onClose={() => setPending(null)} maxWidth="xs" fullWidth>
+        {pending && (() => {
+          const { total, rows, flagged } = exportSummary(pending.group, items, pending.type);
+          return (
+            <>
+              <DialogTitle>
+                Export {pending.type === 'folder' ? 'folders' : 'CSV'}: {pending.group.name}
+              </DialogTitle>
+              <DialogContent dividers>
+                <Typography variant="body2" sx={{ mb: 1.5 }}>
+                  <strong>{total.toLocaleString()}</strong> image{total === 1 ? '' : 's'} will be exported
+                  {pending.type === 'csv' ? ' as CSV rows' : ''}.
+                </Typography>
+                <Stack gap={0.5}>
+                  {rows.map(({ label, count }) => (
+                    <Stack key={label} direction="row">
+                      <Typography variant="body2" sx={{ flex: 1 }}>{label}</Typography>
+                      <Typography variant="body2">{count.toLocaleString()}</Typography>
+                    </Stack>
+                  ))}
+                  {pending.type === 'folder' && flagged > 0 && (
+                    <Stack direction="row">
+                      <Typography variant="body2" sx={{ flex: 1 }}>flagged</Typography>
+                      <Typography variant="body2">{flagged.toLocaleString()}</Typography>
+                    </Stack>
+                  )}
+                </Stack>
+                {total === 0 && (
+                  <Typography variant="body2" color="warning.main" sx={{ mt: 1.5 }}>
+                    Nothing to export for this group yet.
+                  </Typography>
+                )}
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setPending(null)}>Cancel</Button>
+                <Button
+                  variant="contained"
+                  disabled={total === 0}
+                  onClick={() => {
+                    const { type, group } = pending;
+                    setPending(null);
+                    (type === 'folder' ? exportFolder : exportCSV)(group, items);
+                  }}
+                >
+                  Continue
+                </Button>
+              </DialogActions>
+            </>
+          );
+        })()}
+      </Dialog>
     </Stack>
   );
 }

@@ -167,6 +167,7 @@ export default function ImportDialog({ open, onClose, onImport }) {
     const items = imageFiles.map((img, i) => ({
       id: i + 1,
       file: img.file.name,
+      key: img.file.webkitRelativePath || img.file.name,  // unique even when basenames collide
       url: URL.createObjectURL(img.file),
       labels: {},
       suggestedLabels: {},  // pre-imports go here; user must confirm
